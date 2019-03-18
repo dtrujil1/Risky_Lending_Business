@@ -1,0 +1,169 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+train <- read.csv("train_v3.csv")
+```
+
+```{r}
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+library(DMwR)
+```
+
+```{r}
+na_percentage <- function(df, fmt = F) {
+  return (df %>%
+            is.na() %>%
+            colMeans() %>%
+            sapply(function(train) {
+              if (fmt) {
+                return(sprintf("%.5f%%", x * 100))
+              }
+              return (train)
+            })
+          )
+}
+
+na_percent_df <- na_percentage(train) %>%
+  data_frame(Columns = names(.), `NA %` = .) %>%
+  mutate_at(
+    vars(`NA %`),
+    funs(round(. * 100, 2))
+  ) %>%
+  mutate(label = sprintf("%g%%", `NA %`)) %>%
+  arrange(desc(`NA %`))
+
+na_percent_df %>% select(-label) %>% filter(`NA %` > 10.00)
+```
+
+```{r}
+na_percent_df %>% filter(`NA %` > 5.00) %>%
+  filter(`NA %`> 0) %>%
+  ggplot(aes(x = Columns, y = `NA %`, fill = Columns)) +
+  geom_bar(stat="identity") +
+  guides(fill = F) +
+  coord_flip() +
+  geom_text(aes(label = label), hjust = 1.6, size = 3.5) +
+  theme_minimal()
+```
+
+```{r}
+zero_percentage <- function(train, fmt = F) {
+  return ( sapply(train, function(train) {
+    return(all(x == 0))
+  })
+  )
+}
+
+```
+
+
+
+```{r}
+
+
+zero_percent_df <- zero_percentage(train) %>%
+  data_frame(Columns = names(.), `Zero %` = .) %>%
+  filter(`Zero %` == T)
+
+zero_percent_df
+```
+
+```{r}
+remove_zero_cols <- function(df) {
+  rem_vec <- NULL
+  for(i in 1:ncol(df)){
+    this_sum <- summary(df[,i])
+    zero_test <- length(which(this_sum == 0))
+    if(zero_test == 6) {
+      rem_vec[i] <- names(df)[i]
+    }
+  }
+  features_to_remove <- rem_vec[!is.na(rem_vec)]
+  rem_ind <- which(names(df) %in% features_to_remove)
+  train <- train[,-rem_ind]
+  return(train)
+}
+```
+
+```{r}
+
+```
+
+
+
+
+```{r}
+train %>%
+  is.na() %>%
+  rowMeans() %>%
+  data_frame(`NA %` = .) %>%
+  group_by(`NA %`) %>%
+  summarise(freq = n()) %>%
+  mutate_at(
+      .vars = vars(`NA %`),
+      .funs = function(x) x * 100
+  ) %>%
+  arrange(desc(`NA %`))
+```
+
+
+```{r}
+train <- train[rowMeans(is.na(train)) <= 0.10,]
+
+train %>%
+  is.na() %>%
+  rowMeans() %>%
+  data_frame(`NA %` = .) %>%
+  group_by(`NA %`) %>%
+  summarise(freq = n()) %>%
+  mutate_at(
+      .vars = vars(`NA %`),
+      .funs = function(x) x * 100
+  ) %>%
+  arrange(desc(`NA %`))
+
+```
+
+```{r}
+train.imputed <- knnImputation(train)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
