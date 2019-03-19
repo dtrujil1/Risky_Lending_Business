@@ -2,6 +2,7 @@
 
 # Rstudio Files
 .RData
+.Rhistory
 
 # Training and Testing dataset
 data/train_v3.csv
