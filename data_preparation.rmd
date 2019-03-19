@@ -23,6 +23,8 @@ train_df <- read.csv("data/train_v3.csv")
 
 ## Investigating The Percentage of `NA`s per Columnwise
 
+A visual skim of the data set in an excel file reveals several instances of missing observations across multiple variables. Without a full understanding of the full breadth of these missing observations, and how to account for them, one cannot aspire to meaningful and accurate analysis results. 
+
 ```{r}
 na_percentage <- function(df, fmt = F) {
   df %>%
@@ -62,6 +64,8 @@ na_percent_df %>% filter(`NA %` > 5.00) %>%
 
 ## Investigating The Percentage of `NA`s Rowise
 
+Missing observations are equally poised to cause analytical problems when they occupy a large percentage of any given row.
+
 ```{r}
 train %>%
   is.na() %>%
@@ -78,6 +82,8 @@ train %>%
 
 
 ## Investigating 0 Filled Columns
+
+As variables are oriented by columns, any variables contain only "0" as observations contribute nothing to the classification or regression models. It is therefore computationally more efficient to remove them.
 
 ```{r}
 zero_percentage <- function(train, fmt = F) {
@@ -97,6 +103,8 @@ zero_percent_df
 ```
 
 ## Removing Rows that had 10% or more of its values as `NA`s
+
+Imputing all of the missing observations would not make for an efficient use of time. Furthermore, some rows are so devoid of data that imputing missing observation would not yield accurate predictions in the first place using the kNN or MICE packages. Therefore, certain rows must be removed from the data set. In making this decision, one needs to retain the rows that have an acceptable percentage of missing observations for two reasons: One, the removal of all the rows with missing observations would throw out the baby with the bath water. Too much data would be lost in the removal process for the subsequent models to yield meaningful predictions. Two, missing observations in these rows can be accurately imputed, thus there is no justification in removing them.
 
 ```{r}
 train <- train[rowMeans(is.na(train)) <= 0.10,]
