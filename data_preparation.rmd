@@ -3,30 +3,32 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-```{r}
-train <- read.csv("train_v3.csv")
-```
-
-```{r}
+```{r message=F}
 library(magrittr)
 library(dplyr)
 library(ggplot2)
 library(randomForest)
 library(DMwR)
 ```
+## Loading the dataset
 
 ```{r}
+train_df <- read.csv("data/train_v3.csv")
+```
+
+## Investigating The Percentage of `NA`s per Columnwise
+```{r}
 na_percentage <- function(df, fmt = F) {
-  return (df %>%
-            is.na() %>%
-            colMeans() %>%
-            sapply(function(train) {
-              if (fmt) {
-                return(sprintf("%.5f%%", x * 100))
-              }
-              return (train)
-            })
-          )
+  df %>%
+    is.na() %>%
+    colMeans() %>%
+    sapply(function(train) {
+      if (fmt) {
+        return(sprintf("%.5f%%", x * 100))
+      }
+
+      train
+    })
 }
 
 na_percent_df <- na_percentage(train) %>%
@@ -52,52 +54,7 @@ na_percent_df %>% filter(`NA %` > 5.00) %>%
   theme_minimal()
 ```
 
-```{r}
-zero_percentage <- function(train, fmt = F) {
-  return ( sapply(train, function(train) {
-    return(all(x == 0))
-  })
-  )
-}
-
-```
-
-
-
-```{r}
-
-
-zero_percent_df <- zero_percentage(train) %>%
-  data_frame(Columns = names(.), `Zero %` = .) %>%
-  filter(`Zero %` == T)
-
-zero_percent_df
-```
-
-```{r}
-remove_zero_cols <- function(df) {
-  rem_vec <- NULL
-  for(i in 1:ncol(df)){
-    this_sum <- summary(df[,i])
-    zero_test <- length(which(this_sum == 0))
-    if(zero_test == 6) {
-      rem_vec[i] <- names(df)[i]
-    }
-  }
-  features_to_remove <- rem_vec[!is.na(rem_vec)]
-  rem_ind <- which(names(df) %in% features_to_remove)
-  train <- train[,-rem_ind]
-  return(train)
-}
-```
-
-```{r}
-
-```
-
-
-
-
+## Investigating The Percentage of `NA`s Rowise
 ```{r}
 train %>%
   is.na() %>%
@@ -112,6 +69,27 @@ train %>%
   arrange(desc(`NA %`))
 ```
 
+
+## Investigating 0 Filled Columns
+
+```{r}
+zero_percentage <- function(train, fmt = F) {
+  return ( sapply(train, function(train) {
+    return(all(x == 0))
+  })
+  )
+}
+```
+
+```{r}
+zero_percent_df <- zero_percentage(train) %>%
+  data_frame(Columns = names(.), `Zero %` = .) %>%
+  filter(`Zero %` == T)
+
+zero_percent_df
+```
+
+## Removing Rows that had 10% or more of its values as `NA`s
 
 ```{r}
 train <- train[rowMeans(is.na(train)) <= 0.10,]
@@ -127,43 +105,4 @@ train %>%
       .funs = function(x) x * 100
   ) %>%
   arrange(desc(`NA %`))
-
 ```
-
-```{r}
-train.imputed <- knnImputation(train)
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
