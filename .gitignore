@@ -1,5 +1,9 @@
 *.nb.html
 
 # Rstudio Files
-
 .RData
+
+# Training and Testing dataset
+data/train_v3.csv
+data/test_scenario1_2.csv
+data/test_scenario3.csv
