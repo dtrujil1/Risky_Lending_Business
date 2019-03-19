@@ -1,15 +1,20 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Data Preparation & Cleaning"
+output: github_document
 ---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(
+  fig.path = "markdown_figs/data_preparation-"
+)
+```
 
 ```{r message=F}
 library(magrittr)
 library(dplyr)
 library(ggplot2)
-library(randomForest)
-library(DMwR)
 ```
+
 ## Loading the dataset
 
 ```{r}
@@ -17,6 +22,7 @@ train_df <- read.csv("data/train_v3.csv")
 ```
 
 ## Investigating The Percentage of `NA`s per Columnwise
+
 ```{r}
 na_percentage <- function(df, fmt = F) {
   df %>%
@@ -55,6 +61,7 @@ na_percent_df %>% filter(`NA %` > 5.00) %>%
 ```
 
 ## Investigating The Percentage of `NA`s Rowise
+
 ```{r}
 train %>%
   is.na() %>%
