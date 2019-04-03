@@ -13,111 +13,181 @@ knitr::opts_chunk$set(
 library(magrittr)
 library(dplyr)
 library(ggplot2)
+library(glmnet)
+library(randomForest)
+library(caret)
+library(data.table) # faster reading speeds for csv files (fread)
+library(doParallel)
+library(klaR) # for stepwise (stepclass function)
 ```
 
 ## Loading the dataset
 
 ```{r}
-train_df <- read.csv("data/train_v3.csv")
+loan_dt <- fread("data/train_v3.csv")
+loan_df <- as.data.frame(loan_dt)
 ```
 
-## Investigating The Percentage of `NA`s per Columnwise
+## Cleaning The Data Up
 
-A visual skim of the data set in an excel file reveals several instances of missing observations across multiple variables. Without a full understanding of the full breadth of these missing observations, and how to account for them, one cannot aspire to meaningful and accurate analysis results. 
+### Recoding The Predictor Variables
 
 ```{r}
-na_percentage <- function(df, fmt = F) {
-  df %>%
-    is.na() %>%
-    colMeans() %>%
-    sapply(function(train) {
-      if (fmt) {
-        return(sprintf("%.5f%%", x * 100))
-      }
+loan_df <- loan_df %>% mutate_all(as.numeric)
+```
 
-      train
-    })
-}
+### Recoding The Target Variable
 
-na_percent_df <- na_percentage(train) %>%
-  data_frame(Columns = names(.), `NA %` = .) %>%
-  mutate_at(
-    vars(`NA %`),
-    funs(round(. * 100, 2))
+```{r}
+target_var <- loan_df %>%
+  select(loss) %>%
+  mutate_at(c("loss"), ~ifelse(. > 0, 1, 0)) %>%
+  mutate_at(c("loss"), as.factor)
+```
+
+### Removing Near Zero Variance Variables
+
+```{r}
+registerDoParallel(6)
+
+nzv_cols <- nearZeroVar(loan_df, allowParallel = T, foreach = T)
+loan_df_cln <- loan_df[, -nzv_cols]
+```
+
+### Quick Inputation of `NA`s
+
+```{r}
+impute_model <- preProcess(loan_df_cln, method = "medianImpute")
+loan_df_cln2 <- predict(impute_model, loan_df_cln)
+```
+
+```{r}
+anyNA(loan_df_cln2)
+```
+
+### Preparing The Data for Feature Selection
+
+```{r}
+loan_df_cln3 <- loan_df_cln2 %>% select(-c("V1", "id"))
+
+predictor_vars <- data.matrix(loan_df_cln3)
+
+loss <- target_var %>% use_series("loss") %>% as.vector()
+```
+
+## Feature Selection and Extraction
+
+### Selecting Features using LASSO
+
+```{r}
+set.seed(2019)
+registerDoParallel(6)
+
+cv_fit <- cv.glmnet(
+  predictor_vars, loss,
+  type.measure = "class",
+  family = "binomial",
+  alpha = 1,
+  parallel = T
+)
+```
+
+```{r}
+plot(cv_fit)
+```
+
+```{r}
+lasso_model <- glmnet(
+  predictor_vars, loss,
+  lambda = cv_fit$lambda.min,
+  family = "binomial",
+  alpha = 1
+)
+```
+
+```{r}
+plot(lasso_model, xvar="lambda", label=TRUE)
+```
+
+```{r}
+coeff_matrix <- coef(lasso_model, s = "lambda.min")
+
+coeff_matrix
+```
+
+```{r}
+lasso_coefs <- data.frame(
+  name = coeff_matrix@Dimnames[[1]][coeff_matrix@i + 1],
+  coefficient = coeff_matrix@x
   ) %>%
-  mutate(label = sprintf("%g%%", `NA %`)) %>%
-  arrange(desc(`NA %`))
+  filter(name !="(Intercept)") %>%
+  use_series("name") %>%
+  as.character()
 
-na_percent_df %>% select(-label) %>% filter(`NA %` > 10.00)
+lasso_coefs
+```
+
+#### Separating Good Predictor Variables from the Noise
+
+```{r}
+good_pred_var <- loan_df_cln3 %>% select(lasso_coefs)
+
+head(good_pred_var)
 ```
 
 ```{r}
-na_percent_df %>% filter(`NA %` > 5.00) %>%
-  filter(`NA %`> 0) %>%
-  ggplot(aes(x = Columns, y = `NA %`, fill = Columns)) +
-  geom_bar(stat="identity") +
-  guides(fill = F) +
-  coord_flip() +
-  geom_text(aes(label = label), hjust = 1.6, size = 3.5) +
-  theme_minimal()
+noise_pred_var <- loan_df_cln3 %>% select(-lasso_coefs)
+
+head(noise_pred_var)
 ```
 
-## Investigating The Percentage of `NA`s Rowise
-
-Missing observations are equally poised to cause analytical problems when they occupy a large percentage of any given row.
+#### Applying PCA to compresss Noisy Predictor Variables
 
 ```{r}
-train %>%
-  is.na() %>%
-  rowMeans() %>%
-  data_frame(`NA %` = .) %>%
-  group_by(`NA %`) %>%
-  summarise(freq = n()) %>%
-  mutate_at(
-      .vars = vars(`NA %`),
-      .funs = function(x) x * 100
-  ) %>%
-  arrange(desc(`NA %`))
+pca_model <- preProcess(
+  noise_pred_var,
+  method = c( "center", "scale", "pca"),
+  pcaComp = 10
+)
+pca_df <- predict(pca_model, noise_pred_var)
+
+head(pca_df)
 ```
 
-
-## Investigating 0 Filled Columns
-
-As variables are oriented by columns, any variables contain only "0" as observations contribute nothing to the classification or regression models. It is therefore computationally more efficient to remove them.
+#### Building a Model
 
 ```{r}
-zero_percentage <- function(train, fmt = F) {
-  return ( sapply(train, function(train) {
-    return(all(x == 0))
-  })
-  )
-}
+compressed_df <- cbind(good_pred_var, loss)
+
+head(compressed_df)
 ```
 
-```{r}
-zero_percent_df <- zero_percentage(train) %>%
-  data_frame(Columns = names(.), `Zero %` = .) %>%
-  filter(`Zero %` == T)
+## Spliting data into Training and Validation
 
-zero_percent_df
+```{r}
+set.seed(2019)
+
+train_index <- createDataPartition(
+  compressed_df$loss,
+  p = 0.8,
+  list = F,
+  times = 1
+)
+
+train_data <- compressed_df[train_index,]
+val_data <- compressed_df[-train_index,]
 ```
 
-## Removing Rows that had 10% or more of its values as `NA`s
-
-Imputing all of the missing observations would not make for an efficient use of time. Furthermore, some rows are so devoid of data that imputing missing observation would not yield accurate predictions in the first place using the kNN or MICE packages. Therefore, certain rows must be removed from the data set. In making this decision, one needs to retain the rows that have an acceptable percentage of missing observations for two reasons: One, the removal of all the rows with missing observations would throw out the baby with the bath water. Too much data would be lost in the removal process for the subsequent models to yield meaningful predictions. Two, missing observations in these rows can be accurately imputed, thus there is no justification in removing them.
+## Stepwise Variable Selection for Classification
 
 ```{r}
-train <- train[rowMeans(is.na(train)) <= 0.10,]
+# step_model <- stepclass(loss ~ ., data = train_data, method = "lcd", direction = "backward")
+```
 
-train %>%
-  is.na() %>%
-  rowMeans() %>%
-  data_frame(`NA %` = .) %>%
-  group_by(`NA %`) %>%
-  summarise(freq = n()) %>%
-  mutate_at(
-      .vars = vars(`NA %`),
-      .funs = function(x) x * 100
-  ) %>%
-  arrange(desc(`NA %`))
+## Building a Random Forest Model for Classification
+
+```{r}
+registerDoParallel(6)
+
+model_rf <- train(loss ~ ., data = train_data, method = "parRF")
 ```
