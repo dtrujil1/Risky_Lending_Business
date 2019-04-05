@@ -16,9 +16,9 @@ library(ggplot2)
 library(glmnet)
 library(randomForest)
 library(caret)
-library(data.table) # faster reading speeds for csv files (fread)
+library(data.table)
 library(doParallel)
-library(klaR) # for stepwise (stepclass function)
+library(klaR)
 ```
 
 ## Loading the dataset
@@ -68,7 +68,7 @@ anyNA(loan_df_cln2)
 ### Preparing The Data for Feature Selection
 
 ```{r}
-loan_df_cln3 <- loan_df_cln2 %>% select(-c("V1", "id"))
+loan_df_cln3 <- loan_df_cln2 %>% dplyr::select(-c("V1", "id"))
 
 predictor_vars <- data.matrix(loan_df_cln3)
 
@@ -81,7 +81,8 @@ loss <- target_var %>% use_series("loss") %>% as.vector()
 
 ```{r}
 set.seed(2019)
-registerDoParallel(6)
+cluster <- makePSOCKcluster(detectCores() - 1)
+registerDoParallel(cluster)
 
 cv_fit <- cv.glmnet(
   predictor_vars, loss,
@@ -90,6 +91,9 @@ cv_fit <- cv.glmnet(
   alpha = 1,
   parallel = T
 )
+
+stopCluster(cluster)
+registerDoSEQ()
 ```
 
 ```{r}
@@ -130,64 +134,39 @@ lasso_coefs
 #### Separating Good Predictor Variables from the Noise
 
 ```{r}
-good_pred_var <- loan_df_cln3 %>% select(lasso_coefs)
+good_pred_var <- loan_df_cln3 %>% dplyr::select(lasso_coefs)
 
 head(good_pred_var)
 ```
 
-```{r}
-noise_pred_var <- loan_df_cln3 %>% select(-lasso_coefs)
+#### Applying PCA to Compresss Good Predictor Variables
 
-head(noise_pred_var)
+```{r}
+pre_process_model <- preProcess(
+  good_pred_var,
+  method = c( "center", "scale"),
+  pcaComp = 30
+)
+
+good_pred_var_cln <- predict(pre_process_model, good_pred_var)
+
+head(good_pred_var_cln)
 ```
 
-#### Applying PCA to compresss Noisy Predictor Variables
+```{r}
+pca_model <- prcomp(good_pred_var_cln)
+
+summary(pca_model)
+```
+
+###### Select The First 57 Principal Components That explain 95% of the Variance
 
 ```{r}
-pca_model <- preProcess(
-  noise_pred_var,
-  method = c( "center", "scale", "pca"),
-  pcaComp = 10
-)
-pca_df <- predict(pca_model, noise_pred_var)
+pca_df <- predict(pca_model, good_pred_var_cln) %>% as.data.frame() %>% select(1:57)
 
 head(pca_df)
 ```
 
-#### Building a Model
-
 ```{r}
-compressed_df <- cbind(good_pred_var, loss)
-
-head(compressed_df)
-```
-
-## Spliting data into Training and Validation
-
-```{r}
-set.seed(2019)
-
-train_index <- createDataPartition(
-  compressed_df$loss,
-  p = 0.8,
-  list = F,
-  times = 1
-)
-
-train_data <- compressed_df[train_index,]
-val_data <- compressed_df[-train_index,]
-```
-
-## Stepwise Variable Selection for Classification
-
-```{r}
-# step_model <- stepclass(loss ~ ., data = train_data, method = "lcd", direction = "backward")
-```
-
-## Building a Random Forest Model for Classification
-
-```{r}
-registerDoParallel(6)
-
-model_rf <- train(loss ~ ., data = train_data, method = "parRF")
+save(good_pred_var, pca_df, loss, file = "data/data_preparation.RData")
 ```
