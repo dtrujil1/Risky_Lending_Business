@@ -21,16 +21,16 @@ library(doParallel)
 load(file = "data/data_preparation-v2.RData")
 ```
 
-#### Building a Model
+## Setting Up Clusters and Random Seed
 
 ```{r}
-loss_fct <- as.factor(loss)
-
-levels(loss_fct) <- c( "ND", "D")
-
-summary(loss_fct)
+set.seed(123)
+cluster <- makePSOCKcluster(detectCores() - 1)
+registerDoParallel(cluster)
 ```
 
+
+# Building a Model
 
 ```{r}
 train_df <- cbind(good_predictors, loss_fct) %>% mutate(loss = loss_fct) %>% dplyr::select(-loss_fct)
@@ -46,8 +46,6 @@ head(train_df_hcorr)
 ### Training and Validation using All Good Predictors
 
 ```{r}
-set.seed(123)
-
 train_index <- createDataPartition(
   train_df$loss,
   p = 0.8,
@@ -62,8 +60,6 @@ val_data <- train_df[-train_index,]
 ### Training and Validation using PCA Components (95% Variance)
 
 ```{r}
-set.seed(123)
-
 train_index_pca <- createDataPartition(
   train_df_pca$loss,
   p = 0.8,
@@ -96,9 +92,6 @@ val_data_hcorr <- train_df_hcorr[-train_index,]
 ### LASSO Model (Caret) All Good Predictors
 
 ```{r}
-cluster <- makePSOCKcluster(detectCores() - 1)
-registerDoParallel(cluster)
-
 ctrl_opts <- trainControl(
   method = "repeatedcv",
   number = 5,
@@ -114,9 +107,6 @@ model_glmnet <- train(
   metric = "ROC",
   trControl = ctrl_opts
 )
-
-stopCluster(cluster)
-registerDoSEQ()
 ```
 
 ```{r}
@@ -130,9 +120,6 @@ plot(model_glmnet)
 ### LASSO Model (Caret) PCA Components
 
 ```{r}
-cluster <- makePSOCKcluster(detectCores() - 1)
-registerDoParallel(cluster)
-
 ctrl_opts <- trainControl(
   method = "repeatedcv",
   number = 5,
@@ -148,9 +135,6 @@ model_glmnet_pca <- train(
   metric = "ROC",
   trControl = ctrl_opts
 )
-
-stopCluster(cluster)
-registerDoSEQ()
 ```
 
 ```{r}
@@ -164,9 +148,6 @@ plot(model_glmnet_pca)
 ### Training a LASSO Model Using Good Predictor Variables w/ Highly Correlated (90%) Variables Removed
 
 ```{r}
-cluster <- makePSOCKcluster(detectCores() - 1)
-registerDoParallel(cluster)
-
 ctrl_opts <- trainControl(
   method = "repeatedcv",
   number = 5,
@@ -182,9 +163,6 @@ model_glmnet_hcorr <- train(
   metric = "ROC",
   trControl = ctrl_opts
 )
-
-stopCluster(cluster)
-registerDoSEQ()
 ```
 
 ```{r}
@@ -198,9 +176,6 @@ plot(model_glmnet_hcorr)
 ### Training a Random Forest Model (caret)
 
 ```{r}
-cluster <- makePSOCKcluster(detectCores() - 1)
-registerDoParallel(cluster)
-
 ctrl_opts <- trainControl(
   method = "repeatedcv",
   number = 5,
@@ -216,9 +191,6 @@ model_rf <- train(
   metric = "ROC",
   trControl = ctrl_opts
 )
-
-stopCluster(cluster)
-registerDoSEQ()
 ```
 
 ```{r}
@@ -248,6 +220,13 @@ confusionMatrix(model_preds, val_data_pca$loss)
 model_preds <- predict(model_glmnet_hcorr, newdata = val_data_hcorr)
 
 confusionMatrix(model_preds, val_data_hcorr$loss)
+```
+
+## Close Clusters
+
+```{r}
+stopCluster(cluster)
+registerDoSEQ()
 ```
 
 ## Saving Models

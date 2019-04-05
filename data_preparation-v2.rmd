@@ -21,6 +21,16 @@ library(doParallel)
 library(klaR)
 ```
 
+## Setting Up Clusters and Random Seed
+
+__ONLY RUN ONCE__
+
+```{r}
+set.seed(123)
+cluster <- makePSOCKcluster(detectCores() - 1)
+registerDoParallel(cluster)
+```
+
 ## Loading the dataset
 
 ```{r echo=FALSE}
@@ -53,14 +63,8 @@ target_var <- loan_df %>%
 ### Removing Near Zero Variance Variables
 
 ```{r}
-cluster <- makePSOCKcluster(detectCores() - 1)
-registerDoParallel(cluster)
-
 nzv_cols <- nearZeroVar(loan_df, allowParallel = T, foreach = T)
 loan_df_cln <- loan_df[, -nzv_cols]
-
-stopCluster(cluster)
-registerDoSEQ()
 ```
 
 ### Quick Inputation of `NA`s
@@ -81,7 +85,11 @@ loan_df_cln3 <- loan_df_cln2 %>% dplyr::select(-c("V1", "id"))
 
 predictor_vars <- data.matrix(loan_df_cln3)
 
-loss <- target_var %>% use_series("loss") %>% as.vector()
+loss <- target_var %>% use_series("loss") %>% as.vector() %>% as.factor()
+
+levels(loss) <- c( "ND", "D")
+
+summary(loss)
 ```
 
 ## Feature Selection and Extraction
@@ -89,10 +97,6 @@ loss <- target_var %>% use_series("loss") %>% as.vector()
 ### Selecting Features using LASSO
 
 ```{r}
-set.seed(123)
-cluster <- makePSOCKcluster(detectCores() - 1)
-registerDoParallel(cluster)
-
 cv_lasso <- cv.glmnet(
   predictor_vars, loss,
   type.measure = "auc",
@@ -101,11 +105,6 @@ cv_lasso <- cv.glmnet(
   parallel = T
 )
 
-stopCluster(cluster)
-registerDoSEQ()
-```
-
-```{r}
 plot(cv_lasso)
 ```
 
@@ -176,6 +175,56 @@ good_predictors_rm_hcorr <- good_predictors %>% dplyr::select(-high_corr_vars)
 head(good_predictors_rm_hcorr)
 ```
 
+#### Recursive Feauture Selection
+
+```{r}
+pre_process_model <- preProcess(
+  good_predictors,
+  method = c( "center", "scale")
+)
+
+good_predictors_cln <- predict(pre_process_model, good_predictors)
+
+head(good_predictors_cln)
+```
+
+```{r}
+lda_ctrl_opts <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  allowParallel = T,
+  classProbs = T,
+  summaryFunction = twoClassSummary
+)
+
+lda_predictors <- train(
+  x = good_predictors_cln,
+  y = loss,
+  method = "stepLDA",
+  metric = "ROC",
+  tuneGrid = expand.grid(direction = "backward", maxvar = 50),
+  trControl = lda_ctrl_opts
+)
+```
+
+```{r}
+print(lda_predictors)
+
+predictors(lda_predictors)
+
+#plot(results, type=c("g", "o"))
+```
+
+## Close Clusters
+
+__ONLY RUN ONCE__
+
+```{r}
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+## Savinging Prepped Data
 
 ```{r}
 saveRDS(cv_lasso, file = "data/cv_lasso_auc.rds")
