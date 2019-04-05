@@ -1,0 +1,105 @@
+---
+title: "Model Building"
+output: github_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(
+  fig.path = "markdown_figs/data_preparation-"
+)
+```
+
+```{r message=F}
+library(magrittr)
+library(dplyr)
+library(randomForest)
+library(caret)
+library(doParallel)
+```
+
+```{r}
+load(file = "data/data_preparation.RData")
+```
+
+#### Building a Model
+
+```{r}
+loss_fct <- as.factor(loss)
+
+levels(loss_fct) <- c( "ND", "D")
+
+summary(loss_fct)
+```
+
+
+```{r}
+compressed_df <- cbind(pca_df, loss_fct) %>% mutate(loss = loss_fct) %>% select(-loss_fct)
+
+head(compressed_df)
+```
+
+## Spliting data into Training and Validation
+```{r}
+set.seed(2019)
+
+train_index <- createDataPartition(
+  compressed_df$loss,
+  p = 0.8,
+  list = F,
+  times = 1
+)
+
+train_data <- compressed_df[train_index,]
+val_data <- compressed_df[-train_index,]
+```
+
+```{r}
+cluster <- makePSOCKcluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+ctrl_opts <- trainControl(
+  method = "cv",
+  number = 5,
+  allowParallel = T,
+  classProbs = T,
+  summaryFunction = twoClassSummary
+)
+
+model_rf <- train(
+  loss ~ .,
+  data = train_data,
+  method = "rf",
+  metric = "ROC",
+  trControl = ctrl_opts
+)
+
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+```{r}
+model_rf
+```
+
+```{r}
+plot(model_rf)
+```
+
+## Evaluating the Model Accuracy
+
+```{r}
+model_preds <- predict(model_rf, newdata = val_data)
+
+confusionMatrix(model_preds, val_data$loss)
+```
+
+```{r}
+model_preds_prob <- predict(model_rf, newdata = val_data, type = "prob")
+
+model_preds_prob
+```
+
+```{r}
+save(model_rf, file = "data/model_building.RData")
+```
+
