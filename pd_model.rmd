@@ -69,7 +69,7 @@ nzv_cols <- nearZeroVar(train_predictor_df, allowParallel = T, foreach = T)
 train_predictor_df_cln <- train_predictor_df[, -nzv_cols]
 ```
 
-#### `NA`Inputation using Median
+#### `NA`Inputation using Median 
 
 ```{r}
 impute_model <- preProcess(train_predictor_df_cln, method = "medianImpute")
@@ -133,12 +133,12 @@ max(cv_fit$cvm)
 
 ```{r}
 predictions <- predict(cv_fit, newx = val_data_x, s = "lambda.min") %>% as.vector()
-pred_class <- predict(cv_fit, newx = val_data_x, s = "lambda.min", type = "class") %>%
+pred_class <- predict(cv_fit, newx = val_data_x, s = "lambda.min", type = "class") %>% 
   as.vector() %>%
   factor(levels = c("0", "1"))
 ```
 
-### ROC & AUC
+### ROC & AUC 
 
 ```{r}
 roc_result <- roc(test_data_y, predictions)
@@ -171,28 +171,12 @@ test_scenario1_2 <- fread("data/test_scenario1_2.csv", data.table = F, colClasse
 test_predictors_df <- test_scenario1_2 %>% select(-c("requested_loan", "V1", "X", "id"))
 ```
 
-#### Getting Columns Specific to Scenario 1 & 2
-
-```{r}
-request_loan_sc1_2 <- test_scenario1_2 %>% select(requested_loan)
-```
-
-#### Getting Columns Specific to Scenario 3
-
-```{r}
-request_loan_sc3 <- test_scenario3 %>% select(requested_loan)
-proposed_intrest_rate <- test_scenario3 %>% select(Proposed_Intrest_Rate)
-```
-
 ### Cleaning The Data Up
 
 #### Recoding The Variables as Numeric
 
 ```{r}
 test_predictors_df <- test_predictors_df %>% mutate_all(as.numeric)
-request_loan_sc1_2 <- request_loan_sc1_2 %>% mutate_all(as.numeric)
-request_loan_sc3 <- request_loan_sc3 %>% mutate_all(as.numeric)
-proposed_intrest_rate <- proposed_intrest_rate %>% mutate_all(as.numeric)
 ```
 
 #### Removing Near Zero Variance Variables
@@ -202,7 +186,7 @@ test_nzv_cols <- nearZeroVar(test_predictors_df, allowParallel = T, foreach = T)
 test_predictors_df_cln <- test_predictors_df[, -test_nzv_cols]
 ```
 
-#### `NA`Inputation using Median
+#### `NA`Inputation using Median 
 
 ```{r}
 test_impute_model <- preProcess(test_predictors_df_cln, method = "medianImpute")
