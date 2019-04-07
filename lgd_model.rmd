@@ -54,18 +54,22 @@ train_predictors_df_cln_r <- train_predictors_df_r %>% filter(loss > 0)
 head(train_predictors_df_cln_r)
 ```
 
+```{r}
+summary(train_predictors_df_cln_r$loss)
+```
+
 #### Removing Near Zero Variance Variables
 
 ```{r}
-test_nzv_cols_r <- nearZeroVar(train_predictors_df_cln_r, allowParallel = T, foreach = T)
-train_predictors_df_cln2_r <- train_predictors_df_cln_r[, -test_nzv_cols_r]
+nzv_cols_r <- nearZeroVar(train_predictors_df_cln_r, allowParallel = T, foreach = T)
+train_predictors_df_cln2_r <- train_predictors_df_cln_r[, -nzv_cols_r]
 ```
 
-#### `NA`Inputation using Median
+#### `NA` Inputation using Median
 
 ```{r}
-test_impute_model_r <- preProcess(train_predictors_df_cln2_r, method = "medianImpute")
-train_predictors_df_cln3_r <- predict(test_impute_model_r, train_predictors_df_cln2_r)
+impute_model_r <- preProcess(train_predictors_df_cln2_r, method = "medianImpute")
+train_predictors_df_cln3_r <- predict(impute_model_r, train_predictors_df_cln2_r)
 
 anyNA(train_predictors_df_cln3_r)
 ```
@@ -88,10 +92,10 @@ summary(corr_matrix)
 ### Sort The Variables by their Absolute Correlation Values
 
 ```{r}
-corr_df <- as.data.frame(corr_matrix) %>%
+corr_df <- as.data.frame(corr_matrix) %>% 
   transmute(
-    predictors = rownames(corr_matrix),
-    corr = loss,
+    predictors = rownames(corr_matrix), 
+    corr = loss, 
     abs_corr = abs(loss)
   )
 
@@ -137,7 +141,7 @@ train_index_r <- createDataPartition(
 train_data_r <- train_df_r[train_index_r,]
 test_data_r <- train_df_r[-train_index_r,]
 
-train_data_x_r <- train_data_r %>% dplyr::select(-c("loss"))
+train_data_x_r <- train_data_r %>% dplyr::select(-c("loss")) 
 test_data_x <- test_data_r  %>% dplyr::select(-c("loss"))
 
 train_data_y_r <- train_data_r %>% dplyr::select(c("loss")) %>% use_series("loss") %>% as.numeric()
@@ -154,8 +158,11 @@ ctrl_opts <- trainControl(
 )
 
 tune_grid <- expand.grid(alpha = c(1, 0.8), lambda = seq(0, 1, by = 0.01))
+```
 
-glmnet_model <- train(
+
+```{r}
+glmnet_model_rsqr <- train(
   x = train_data_x_r,
   y = train_data_y_r,
   method = "glmnet",
@@ -164,38 +171,56 @@ glmnet_model <- train(
   trControl = ctrl_opts
 )
 
-best_result <- glmnet_model$results %>%
-  select(alpha, lambda, Rsquared, MAE, RMSE) %>%
-  right_join(glmnet_model$bestTune)
-
-best_result
+glmnet_model_rsqr$results %>%
+  select(alpha, lambda, Rsquared, MAE, RMSE) %>% 
+  right_join(glmnet_model_rsqr$bestTune)
 ```
 
 ```{r}
-plot(glmnet_model)
+plot(glmnet_model_rsqr)
 ```
 
+```{r}
+glmnet_model_mae <- train(
+  x = train_data_x_r,
+  y = train_data_y_r,
+  method = "glmnet",
+  metric = "MAE",
+  tuneGrid = tune_grid,
+  trControl = ctrl_opts
+)
+
+glmnet_model_mae$results %>%
+  select(alpha, lambda, Rsquared, MAE, RMSE) %>% 
+  right_join(glmnet_model_mae$bestTune)
+```
 
 ```{r}
-coeff_matrix <- coef(glmnet_model$finalModel, s = glmnet_model$bestTune$lambda)
+plot(glmnet_model_mae)
+```
 
-lasso_coefs <- data.frame(
-  name = coeff_matrix@Dimnames[[1]][coeff_matrix@i + 1],
-  coefficient = coeff_matrix@x
+## Choosing the Model based on Rsquared Metric
+
+```{r}
+coeff_matrix_r <- coef(glmnet_model_rsqr$finalModel, s = glmnet_model_rsqr$bestTune$lambda)
+
+cv_coefs_r <- data.frame(
+  name = coeff_matrix_r@Dimnames[[1]][coeff_matrix_r@i + 1],
+  coefficient = coeff_matrix_r@x
   ) %>%
   filter(name !="(Intercept)") %>%
   arrange(-abs(coefficient)) %>%
   use_series("name") %>%
   as.character()
 
-lasso_coefs
+cv_coefs_r
 ```
 
 #### Separating Good Predictor Variables from the Noise
 
 ```{r}
-good_predictors <- top_predictor_df_r_cln %>% dplyr::select(lasso_coefs)
-good_predictors <- good_predictors %>% dplyr::select(-c(f402, f648))
+good_predictors <- top_predictor_df_r_cln %>% dplyr::select(cv_coefs_r)
+good_predictors <- good_predictors
 
 head(good_predictors)
 ```
@@ -204,9 +229,8 @@ head(good_predictors)
 train_df2_r <- cbind(good_predictors, loss_df_r)
 ```
 
-# GLM Model
-### R2 for glm model = 1-(Residual Deviance/Null Deviance)
-### R2 for glm model = 0.366
+## Training The GLM Model using Good Predictors obtained from Cross Validation `glmnet`
+
 
 ```{r}
 glm_model <- glm(loss ~ ., family = gaussian, data = train_df2_r)
@@ -238,34 +262,27 @@ test_predictors_df_r <- test_scenario1_2 %>% select(-c("requested_loan", "V1", "
 test_predictors_df_r <- test_predictors_df_r %>% mutate_all(as.numeric)
 ```
 
-#### Removing Near Zero Variance Variables
+#### `NA`Inputation using Median 
 
 ```{r}
-test_nzv_cols_r <- nearZeroVar(test_predictors_df_r, allowParallel = T, foreach = T)
-test_predictors_df_cln_r <- test_predictors_df[, -test_nzv_cols_r]
-```
+test_impute_model_r <- preProcess(test_predictors_df_r, method = "medianImpute")
+test_predictors_df_cln_r <- predict(test_impute_model_r, test_predictors_df_r)
 
-#### `NA`Inputation using Median
-
-```{r}
-test_impute_model_r <- preProcess(test_predictors_df_cln_r, method = "medianImpute")
-test_predictors_df_cln2_r <- predict(test_impute_model_r, test_predictors_df_cln_r)
-
-anyNA(test_predictors_df_cln2_r)
+anyNA(test_predictors_df_cln_r)
 ```
 
 #### Center and Scale The Data
 
 ```{r}
-test_preproc_model_r <- preProcess(test_predictors_df_cln2_r, method = c("center", "scale"))
-test_predictors_df_cln3_r <- predict(test_preproc_model_r, test_predictors_df_cln2_r)
+test_preproc_model_r <- preProcess(test_predictors_df_cln_r, method = c("center", "scale"))
+test_predictors_df_cln2_r <- predict(test_preproc_model_r, test_predictors_df_cln_r)
 ```
 
 ### Predicting Loss Given Default
 
 ```{r}
-test_data_r <- test_predictors_df_cln3_r %>%
-  select(colnames(good_predictors))
+test_data_r <- test_predictors_df_cln2_r %>%
+  select(colnames(good_predictors)) 
 
 head(test_data_r)
 ```
@@ -276,6 +293,12 @@ lg_default <- predict(glm_model, test_data_r)
 
 ```{r}
 summary(lg_default)
+```
+
+```{r}
+ggplot(as.data.frame(lg_default), aes(x = lg_default)) +
+  geom_histogram(bins = 20) +
+  xlab("Loss Given Default")
 ```
 
 ```{r}
