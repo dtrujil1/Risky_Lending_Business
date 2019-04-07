@@ -1,0 +1,94 @@
+---
+title: "Evaluating Oppurtunity and Risk for Lending Loans"
+output: github_document
+---
+
+## Data Preparation & Cleaning
+
+```{r setup, include=F}
+knitr::opts_chunk$set(
+  fig.path = "markdown_figs/data_preparation-",
+  eval = F
+)
+```
+
+```{r library, message=F}
+library(magrittr)
+library(dplyr)
+library(data.table) # Faster reading speeds for csv files (fread)
+```
+
+## Computing Probability of Default for Test Set
+
+### Loading the Test Datasets
+
+```{r}
+test_scenario3 <- fread("data/test_scenario3.csv", data.table = F, colClasses = c("character"))
+test_scenario1_2 <- fread("data/test_scenario1_2.csv", data.table = F, colClasses = c("character"))
+```
+
+#### Getting Columns Specific to Scenario 1 & 2
+
+```{r}
+request_loan_sc1_2 <- test_scenario1_2 %>% select(requested_loan)
+```
+
+#### Getting Columns Specific to Scenario 3
+
+```{r}
+request_loan_sc3 <- test_scenario3 %>% select(requested_loan)
+proposed_intrest_rate <- test_scenario3 %>% select(Proposed_Intrest_Rate)
+```
+
+#### Loading PD and LGD of Customers in Test Set
+
+```{r}
+customer_LGD <- read.csv("data/customer-LGD.csv")
+customer_PD <- read.csv("data/customer-PD.csv")
+```
+
+
+### Evaluating Customers in Scenario 1
+
+```{r}
+scenario1 <- test_scenario1_2 %>%
+  select(id) %>%
+  bind_cols(request_loan_sc1_2,customer_PD, customer_LGD) %>%
+  rename(LGD = x) %>%
+  mutate(
+    Oppurtunity = requested_loan * 0.0432 * 5 * (1 - PD),
+    Risk = requested_loan + (1 - PD) *  LGD
+  )
+
+scenario1
+```
+
+### Evaluating Customers in Scenario 2
+
+```{r}
+scenario2 <- test_scenario1_2 %>%
+  select(id) %>%
+  bind_cols(request_loan_sc1_2,customer_PD, customer_LGD) %>%
+  rename(LGD = x) %>%
+  mutate(
+    Oppurtunity = requested_loan * 0.0432 * 5 * (1 - PD),
+    Risk = requested_loan + (1 - PD) *  LGD
+  )
+
+scenario2
+```
+
+### Evaluating Customers in Scenario 3
+
+```{r}
+scenario3 <- test_scenario3 %>%
+  select(id) %>%
+  bind_cols(request_loan_sc1_2, proposed_intrest_rate, customer_PD, customer_LGD) %>%
+  rename(LGD = x) %>%
+  mutate(
+    Oppurtunity = requested_loan * 0.0432 * 5 * (1 - PD),
+    Risk = requested_loan + (1 - PD) *  LGD
+  )
+
+scenario3
+```
