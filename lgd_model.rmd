@@ -1,0 +1,290 @@
+---
+title: "Building A Model to Predict Loss Given Default"
+output: github_document
+---
+
+## Data Preparation & Cleaning
+
+```{r setup, include=F}
+knitr::opts_chunk$set(
+  fig.path = "markdown_figs/data_preparation-",
+  eval = F
+)
+```
+
+```{r message=F}
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(glmnet)
+library(caret)
+library(data.table) # Faster reading speeds for csv files (fread)
+library(doParallel)
+library(randomForest)
+```
+
+
+```{r start-cluster, include=F}
+# ONLY RUN ONCE
+
+set.seed(123)
+cluster <- makePSOCKcluster(detectCores() - 1)
+registerDoParallel(cluster)
+```
+
+### Loading The Training Dataset
+
+```{r}
+loan_df <- fread("data/train_v3.csv", data.table = F, colClasses = c("character"))
+```
+
+### Cleaning The Data Up
+
+#### Recoding The Variables as Numeric
+
+```{r}
+train_predictors_df_r <- loan_df %>% mutate_all(as.numeric)
+```
+
+#### Keeping Rows Where `loss` > 0
+
+```{r}
+train_predictors_df_cln_r <- train_predictors_df_r %>% filter(loss > 0)
+
+head(train_predictors_df_cln_r)
+```
+
+#### Removing Near Zero Variance Variables
+
+```{r}
+test_nzv_cols_r <- nearZeroVar(train_predictors_df_cln_r, allowParallel = T, foreach = T)
+train_predictors_df_cln2_r <- train_predictors_df_cln_r[, -test_nzv_cols_r]
+```
+
+#### `NA`Inputation using Median
+
+```{r}
+test_impute_model_r <- preProcess(train_predictors_df_cln2_r, method = "medianImpute")
+train_predictors_df_cln3_r <- predict(test_impute_model_r, train_predictors_df_cln2_r)
+
+anyNA(train_predictors_df_cln3_r)
+```
+
+### Seperating Predictor Variables from Target Variable
+
+```{r}
+train_predictors_df_cln4_r <- train_predictors_df_cln3_r %>% dplyr::select(-c("V1", "id", "loss"))
+loss_df_r <- train_predictors_df_cln3_r %>% dplyr::select(loss)
+```
+
+### Computing The Correlation Matrix
+
+```{r}
+corr_matrix <- cor(train_predictors_df_cln4_r, loss_df_r)
+
+summary(corr_matrix)
+```
+
+### Sort The Variables by their Absolute Correlation Values
+
+```{r}
+corr_df <- as.data.frame(corr_matrix) %>%
+  transmute(
+    predictors = rownames(corr_matrix),
+    corr = loss,
+    abs_corr = abs(loss)
+  )
+
+rownames(corr_df) <- rownames(corr_matrix)
+
+head(corr_df)
+```
+
+```{r}
+top_corr_df <- corr_df %>%
+  arrange(desc(abs_corr)) %>%
+  head(600)
+
+top_predictor_df_r <- train_predictors_df_cln4_r %>% dplyr::select(top_corr_df$predictors)
+```
+
+```{r}
+head(top_predictor_df_r)
+```
+
+#### Center and Scale The Data
+
+```{r}
+preproc_model <- preProcess(top_predictor_df_r, method = c("center", "scale"))
+
+top_predictor_df_r_cln <- predict(preproc_model, top_predictor_df_r)
+```
+
+## Building The LGD Model
+
+### Spliting `top_predictor_df_r_cln` into Training and Test
+
+```{r}
+train_df_r <- cbind(top_predictor_df_r_cln, loss_df_r)
+
+train_index_r <- createDataPartition(
+  train_df_r$loss,
+  p = 0.8,
+  list = F,
+  times = 1
+)
+
+train_data_r <- train_df_r[train_index_r,]
+test_data_r <- train_df_r[-train_index_r,]
+
+train_data_x_r <- train_data_r %>% dplyr::select(-c("loss"))
+test_data_x <- test_data_r  %>% dplyr::select(-c("loss"))
+
+train_data_y_r <- train_data_r %>% dplyr::select(c("loss")) %>% use_series("loss") %>% as.numeric()
+test_data_y_r <- test_data_r %>% dplyr::select(c("loss")) %>% use_series("loss") %>% as.numeric()
+```
+
+### Training a `glmnet` (caret) with Cross Validation
+
+```{r}
+ctrl_opts <- trainControl(
+  method = "cv",
+  number = 10,
+  allowParallel = T
+)
+
+tune_grid <- expand.grid(alpha = c(1, 0.8), lambda = seq(0, 1, by = 0.01))
+
+glmnet_model <- train(
+  x = train_data_x_r,
+  y = train_data_y_r,
+  method = "glmnet",
+  metric = "Rsquared",
+  tuneGrid = tune_grid,
+  trControl = ctrl_opts
+)
+
+best_result <- glmnet_model$results %>%
+  select(alpha, lambda, Rsquared, MAE, RMSE) %>%
+  right_join(glmnet_model$bestTune)
+
+best_result
+```
+
+```{r}
+plot(glmnet_model)
+```
+
+
+```{r}
+coeff_matrix <- coef(glmnet_model$finalModel, s = glmnet_model$bestTune$lambda)
+
+lasso_coefs <- data.frame(
+  name = coeff_matrix@Dimnames[[1]][coeff_matrix@i + 1],
+  coefficient = coeff_matrix@x
+  ) %>%
+  filter(name !="(Intercept)") %>%
+  arrange(-abs(coefficient)) %>%
+  use_series("name") %>%
+  as.character()
+
+lasso_coefs
+```
+
+#### Separating Good Predictor Variables from the Noise
+
+```{r}
+good_predictors <- top_predictor_df_r_cln %>% dplyr::select(lasso_coefs)
+good_predictors <- good_predictors %>% dplyr::select(-c(f402, f648))
+
+head(good_predictors)
+```
+
+```{r}
+train_df2_r <- cbind(good_predictors, loss_df_r)
+```
+
+# GLM Model
+### R2 for glm model = 1-(Residual Deviance/Null Deviance)
+### R2 for glm model = 0.366
+
+```{r}
+glm_model <- glm(loss ~ ., family = gaussian, data = train_df2_r)
+r_sqr <- cor(loss_df_r, predict(glm_model))^2 %>% set_rownames("Rsquared")
+
+r_sqr
+```
+
+
+## Computing Probability of Default for Test Set
+
+### Loading the Test Datasets
+
+```{r}
+test_scenario1_2 <- fread("data/test_scenario1_2.csv", data.table = F, colClasses = c("character"))
+```
+
+#### Getting The Test Predictors
+
+```{r}
+test_predictors_df_r <- test_scenario1_2 %>% select(-c("requested_loan", "V1", "X", "id"))
+```
+
+### Cleaning The Data Up
+
+#### Recoding The Variables as Numeric
+
+```{r}
+test_predictors_df_r <- test_predictors_df_r %>% mutate_all(as.numeric)
+```
+
+#### Removing Near Zero Variance Variables
+
+```{r}
+test_nzv_cols_r <- nearZeroVar(test_predictors_df_r, allowParallel = T, foreach = T)
+test_predictors_df_cln_r <- test_predictors_df[, -test_nzv_cols_r]
+```
+
+#### `NA`Inputation using Median
+
+```{r}
+test_impute_model_r <- preProcess(test_predictors_df_cln_r, method = "medianImpute")
+test_predictors_df_cln2_r <- predict(test_impute_model_r, test_predictors_df_cln_r)
+
+anyNA(test_predictors_df_cln2_r)
+```
+
+#### Center and Scale The Data
+
+```{r}
+test_preproc_model_r <- preProcess(test_predictors_df_cln2_r, method = c("center", "scale"))
+test_predictors_df_cln3_r <- predict(test_preproc_model_r, test_predictors_df_cln2_r)
+```
+
+### Predicting Loss Given Default
+
+```{r}
+test_data_r <- test_predictors_df_cln3_r %>%
+  select(colnames(good_predictors))
+
+head(test_data_r)
+```
+
+```{r, message=F}
+lg_default <- predict(glm_model, test_data_r)
+```
+
+```{r}
+summary(lg_default)
+```
+
+```{r}
+write.csv(lg_default, file = "data/customer-LGD.csv", row.names = F)
+```
+
+```{r close-clusters, include=F}
+# ONLY RUN ONCE
+
+stopCluster(cluster)
+registerDoSEQ()
+```

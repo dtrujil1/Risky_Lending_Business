@@ -1,0 +1,252 @@
+---
+title: "Building A Model to Predict Probability to Default"
+output: github_document
+---
+
+## Data Preparation & Cleaning
+
+```{r setup, include=F}
+knitr::opts_chunk$set(
+  fig.path = "markdown_figs/data_preparation-",
+  eval = F
+)
+```
+
+```{r library, message=F}
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(glmnet)
+library(pROC)
+library(caret)
+library(data.table) # Faster reading speeds for csv files (fread)
+library(doParallel)
+```
+
+```{r start-cluster, include=F}
+# ONLY RUN ONCE
+
+set.seed(123)
+cluster <- makePSOCKcluster(detectCores() - 1)
+registerDoParallel(cluster)
+```
+
+### Loading The Training Dataset
+
+```{r}
+loan_df <- fread("data/train_v3.csv", data.table = F, colClasses = c("character"))
+```
+
+### Cleaning The Data Up
+
+#### Recoding All Variables as Numeric
+
+```{r}
+loan_df <- loan_df %>% mutate_all(as.numeric)
+```
+
+#### Recoding The Target Variable
+
+```{r}
+target_df <- loan_df %>%
+  select(loss) %>%
+  mutate_at(c("loss"), ~ifelse(. > 0, 1, 0)) %>%
+  mutate_at(c("loss"), as.factor)
+
+summary(target_df)
+```
+
+#### Separating Predictors Variable from Target Variable (`loss`)
+
+```{r}
+train_predictor_df <- loan_df %>% select(-c("loss", "V1", "id"))
+```
+
+#### Removing Near Zero Variance Variables
+
+```{r}
+nzv_cols <- nearZeroVar(train_predictor_df, allowParallel = T, foreach = T)
+train_predictor_df_cln <- train_predictor_df[, -nzv_cols]
+```
+
+#### `NA`Inputation using Median
+
+```{r}
+impute_model <- preProcess(train_predictor_df_cln, method = "medianImpute")
+train_predictor_df_cln2 <- predict(impute_model, train_predictor_df_cln)
+
+anyNA(train_predictor_df_cln2)
+```
+
+#### Center and Scale The Data
+
+```{r}
+preproc_model <- preProcess(train_predictor_df_cln2, method = c("center", "scale"))
+train_predictor_df_cln3 <- predict(preproc_model, train_predictor_df_cln2)
+```
+
+## Building The PD Model
+
+### Spliting `loan_df_cln3` into Training and Test
+
+```{r}
+train_df <- cbind(train_predictor_df_cln3, target_df) %>% dplyr::select(-c("V1", "id"))
+
+train_index <- createDataPartition(
+  train_df$loss,
+  p = 0.8,
+  list = F,
+  times = 1
+)
+
+train_data <- train_df[train_index,]
+val_data <- train_df[-train_index,]
+
+train_data_x <- train_data %>% dplyr::select(-c("loss")) %>% data.matrix()
+val_data_x <- val_data  %>% dplyr::select(-c("loss")) %>% data.matrix()
+
+train_data_y <- train_data %>% dplyr::select(c("loss")) %>% use_series("loss")
+val_data_y <- val_data %>% dplyr::select(c("loss")) %>% use_series("loss")
+```
+
+### Training a `glmnet` with Cross Validation
+
+```{r}
+cv_fit <- cv.glmnet(
+  train_data_x, train_data_y,
+  type.measure = "auc",
+  family = "binomial",
+  alpha = 0.8,
+  parallel = T
+)
+
+plot(cv_fit)
+```
+
+### Cross Validation AUC
+
+```{r}
+max(cv_fit$cvm)
+```
+
+### Evaluating The PD Model on Validation Set
+
+```{r}
+predictions <- predict(cv_fit, newx = val_data_x, s = "lambda.min") %>% as.vector()
+pred_class <- predict(cv_fit, newx = val_data_x, s = "lambda.min", type = "class") %>%
+  as.vector() %>%
+  factor(levels = c("0", "1"))
+```
+
+### ROC & AUC
+
+```{r}
+roc_result <- roc(test_data_y, predictions)
+
+roc_result
+```
+
+```{r}
+plot(roc_result, col='red', lwd=2)
+```
+
+### Confusion Matrix on The Validation Set
+
+```{r}
+confusionMatrix(pred_class, val_data_y)
+```
+
+## Computing Probability of Default for Test Set
+
+### Loading the Test Datasets
+
+```{r}
+test_scenario3 <- fread("data/test_scenario3.csv", data.table = F, colClasses = c("character"))
+test_scenario1_2 <- fread("data/test_scenario1_2.csv", data.table = F, colClasses = c("character"))
+```
+
+#### Getting The Test Predictors
+
+```{r}
+test_predictors_df <- test_scenario1_2 %>% select(-c("requested_loan", "V1", "X", "id"))
+```
+
+#### Getting Columns Specific to Scenario 1 & 2
+
+```{r}
+request_loan_sc1_2 <- test_scenario1_2 %>% select(requested_loan)
+```
+
+#### Getting Columns Specific to Scenario 3
+
+```{r}
+request_loan_sc3 <- test_scenario3 %>% select(requested_loan)
+proposed_intrest_rate <- test_scenario3 %>% select(Proposed_Intrest_Rate)
+```
+
+### Cleaning The Data Up
+
+#### Recoding The Variables as Numeric
+
+```{r}
+test_predictors_df <- test_predictors_df %>% mutate_all(as.numeric)
+request_loan_sc1_2 <- request_loan_sc1_2 %>% mutate_all(as.numeric)
+request_loan_sc3 <- request_loan_sc3 %>% mutate_all(as.numeric)
+proposed_intrest_rate <- proposed_intrest_rate %>% mutate_all(as.numeric)
+```
+
+#### Removing Near Zero Variance Variables
+
+```{r}
+test_nzv_cols <- nearZeroVar(test_predictors_df, allowParallel = T, foreach = T)
+test_predictors_df_cln <- test_predictors_df[, -test_nzv_cols]
+```
+
+#### `NA`Inputation using Median
+
+```{r}
+test_impute_model <- preProcess(test_predictors_df_cln, method = "medianImpute")
+test_predictors_df_cln2 <- predict(test_impute_model, test_predictors_df_cln)
+
+anyNA(test_predictors_df_cln2)
+```
+
+#### Center and Scale The Data
+
+```{r}
+test_preproc_model <- preProcess(test_predictors_df_cln2, method = c("center", "scale"))
+test_predictors_df_cln3 <- predict(test_preproc_model, test_predictors_df_cln2)
+```
+
+### Predicting Probability of Default
+
+```{r}
+test_data <- test_predictors_df_cln3 %>%
+  select(colnames(train_data_x)) %>%
+  data.matrix()
+
+test_data
+```
+
+```{r}
+prob_default <- predict(
+  cv_fit,
+  newx = test_data,
+  s = "lambda.min",
+  type = "response"
+  ) %>%
+  set_colnames("PD")
+
+summary(prob_default)
+```
+
+```{r}
+write.csv(prob_default, file = "data/customer-PD.csv", row.names = F)
+```
+
+```{r close-clusters, include=F}
+# ONLY RUN ONCE
+
+stopCluster(cluster)
+registerDoSEQ()
+```
