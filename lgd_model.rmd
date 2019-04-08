@@ -92,10 +92,10 @@ summary(corr_matrix)
 ### Sort The Variables by their Absolute Correlation Values
 
 ```{r}
-corr_df <- as.data.frame(corr_matrix) %>% 
+corr_df <- as.data.frame(corr_matrix) %>%
   transmute(
-    predictors = rownames(corr_matrix), 
-    corr = loss, 
+    predictors = rownames(corr_matrix),
+    corr = loss,
     abs_corr = abs(loss)
   )
 
@@ -141,7 +141,7 @@ train_index_r <- createDataPartition(
 train_data_r <- train_df_r[train_index_r,]
 test_data_r <- train_df_r[-train_index_r,]
 
-train_data_x_r <- train_data_r %>% dplyr::select(-c("loss")) 
+train_data_x_r <- train_data_r %>% dplyr::select(-c("loss"))
 test_data_x <- test_data_r  %>% dplyr::select(-c("loss"))
 
 train_data_y_r <- train_data_r %>% dplyr::select(c("loss")) %>% use_series("loss") %>% as.numeric()
@@ -172,7 +172,7 @@ glmnet_model_rsqr <- train(
 )
 
 glmnet_model_rsqr$results %>%
-  select(alpha, lambda, Rsquared, MAE, RMSE) %>% 
+  select(alpha, lambda, Rsquared, MAE, RMSE) %>%
   right_join(glmnet_model_rsqr$bestTune)
 ```
 
@@ -191,7 +191,7 @@ glmnet_model_mae <- train(
 )
 
 glmnet_model_mae$results %>%
-  select(alpha, lambda, Rsquared, MAE, RMSE) %>% 
+  select(alpha, lambda, Rsquared, MAE, RMSE) %>%
   right_join(glmnet_model_mae$bestTune)
 ```
 
@@ -262,7 +262,7 @@ test_predictors_df_r <- test_scenario1_2 %>% select(-c("requested_loan", "V1", "
 test_predictors_df_r <- test_predictors_df_r %>% mutate_all(as.numeric)
 ```
 
-#### `NA`Inputation using Median 
+#### `NA`Inputation using Median
 
 ```{r}
 test_impute_model_r <- preProcess(test_predictors_df_r, method = "medianImpute")
@@ -282,7 +282,7 @@ test_predictors_df_cln2_r <- predict(test_preproc_model_r, test_predictors_df_cl
 
 ```{r}
 test_data_r <- test_predictors_df_cln2_r %>%
-  select(colnames(good_predictors)) 
+  select(colnames(good_predictors))
 
 head(test_data_r)
 ```

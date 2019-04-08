@@ -62,13 +62,13 @@ CAPITAL <- 1.4e+09
 
 ```{r}
 scenario1 <- test_scenario1_2 %>%
-  select(id) %>% 
-  bind_cols(request_loan_sc1_2,customer_PD, customer_LGD) %>% 
+  select(id) %>%
+  bind_cols(request_loan_sc1_2,customer_PD, customer_LGD) %>%
   rename(LGD = x) %>%
   mutate(
     Oppurtunity = requested_loan * 0.0432 * 5 * (1 - PD),
     Risk = requested_loan * PD *  LGD
-  ) 
+  )
 
 summary(scenario1)
 ```
@@ -76,9 +76,9 @@ summary(scenario1)
 #### Total Requested Loan in Scenario 1
 
 ```{r}
-scenario1 %>% 
-  select(requested_loan) %>% 
-  transmute(total_requested_loan = format(sum(.), big.mark = ",", scientific = F)) %>% 
+scenario1 %>%
+  select(requested_loan) %>%
+  transmute(total_requested_loan = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -99,8 +99,8 @@ scenario1 %>%
   mutate(default = ifelse(PD >= 0.5, 1, 0)) %>%
   mutate_at(c("default"), as.factor) %>%
   filter(default == 0) %>%
-  select(Oppurtunity) %>% 
-  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>% 
+  select(Oppurtunity) %>%
+  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -119,8 +119,8 @@ scenario1 %>%
   mutate(default = ifelse(PD >= 0.1, 1, 0)) %>%
   mutate_at(c("default"), as.factor) %>%
   filter(default == 0) %>%
-  select(Oppurtunity) %>% 
-  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>% 
+  select(Oppurtunity) %>%
+  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -128,8 +128,8 @@ scenario1 %>%
 
 ```{r}
 scenario1 %>%
-  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>% 
-  mutate_at(c("loan_approval"), as.factor) %>% 
+  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>%
+  mutate_at(c("loan_approval"), as.factor) %>%
   select(loan_approval) %>%
   summary()
 ```
@@ -138,11 +138,11 @@ scenario1 %>%
 
 ```{r}
 scenario1 %>%
-  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>% 
-  mutate_at(c("loan_approval"), as.factor) %>% 
+  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>%
+  mutate_at(c("loan_approval"), as.factor) %>%
   filter(loan_approval == 1) %>%
-  select(Oppurtunity) %>% 
-  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>% 
+  select(Oppurtunity) %>%
+  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -150,11 +150,11 @@ scenario1 %>%
 
 ```{r}
 scenario1 %>%
-  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>% 
-  mutate_at(c("loan_approval"), as.factor) %>% 
+  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>%
+  mutate_at(c("loan_approval"), as.factor) %>%
   filter(loan_approval == 1) %>%
-  select(requested_loan) %>% 
-  transmute(total_requested_loan = format(sum(.), big.mark = ",", scientific = F)) %>% 
+  select(requested_loan) %>%
+  transmute(total_requested_loan = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -162,8 +162,8 @@ scenario1 %>%
 
 ```{r}
 scenario1 %>%
-  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>% 
-  select(loan_approval) %>% 
+  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>%
+  select(loan_approval) %>%
   write.csv(file = "data/G2_S1.csv", row.names = F)
 ```
 
@@ -173,8 +173,8 @@ CAPITAL <- 450e+6
 
 ```{r}
 scenario2 <- test_scenario1_2 %>%
-  select(id) %>% 
-  bind_cols(request_loan_sc1_2,customer_PD, customer_LGD) %>% 
+  select(id) %>%
+  bind_cols(request_loan_sc1_2,customer_PD, customer_LGD) %>%
   rename(LGD = x) %>%
   mutate(
     Oppurtunity = requested_loan * 0.0432 * 5 * (1 - PD),
@@ -186,8 +186,8 @@ scenario2 <- test_scenario1_2 %>%
 
 ```{r}
 scenario2 %>%
-  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>% 
-  select(loan_approval) %>% 
+  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>%
+  select(loan_approval) %>%
   write.csv(file = "data/G2_S2.csv", row.names = F)
 ```
 
@@ -197,15 +197,15 @@ CAPITAL <- 1.4e+09
 
 ```{r}
 scenario3 <- test_scenario3 %>%
-  select(id) %>% 
-  bind_cols(request_loan_sc1_2, proposed_intrest_rate, customer_PD, customer_LGD) %>% 
+  select(id) %>%
+  bind_cols(request_loan_sc1_2, proposed_intrest_rate, customer_PD, customer_LGD) %>%
   rename(LGD = x) %>%
   mutate(
     Oppurtunity = requested_loan * Proposed_Intrest_Rate * 5 * (1 - PD),
     Risk = requested_loan * PD *  LGD
   )
 
-scenario3
+head(scenario3)
 ```
 
 ```{r}
@@ -216,11 +216,11 @@ scenario3 %>% select(Proposed_Intrest_Rate) %>% summary()
 
 ```{r}
 scenario3 %>%
-  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>% 
-  mutate_at(c("loan_approval"), as.factor) %>% 
+  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>%
+  mutate_at(c("loan_approval"), as.factor) %>%
   filter(loan_approval == 1) %>%
-  select(requested_loan) %>% 
-  transmute(total_requested_loan = format(sum(.), big.mark = ",", scientific = F)) %>% 
+  select(requested_loan) %>%
+  transmute(total_requested_loan = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -228,11 +228,11 @@ scenario3 %>%
 
 ```{r}
 scenario3 %>%
-  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>% 
-  mutate_at(c("loan_approval"), as.factor) %>% 
+  mutate(loan_approval = ifelse(Oppurtunity >= Risk, 1, 0)) %>%
+  mutate_at(c("loan_approval"), as.factor) %>%
   filter(loan_approval == 1) %>%
-  select(Oppurtunity) %>% 
-  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>% 
+  select(Oppurtunity) %>%
+  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -253,8 +253,8 @@ scenario3 %>%
   mutate(default = ifelse(PD >= 0.5, 1, 0)) %>%
   mutate_at(c("default"), as.factor) %>%
   filter(default == 0) %>%
-  select(Oppurtunity) %>% 
-  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>% 
+  select(Oppurtunity) %>%
+  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -273,8 +273,8 @@ scenario3 %>%
   mutate(default = ifelse(PD >= 0.1, 1, 0)) %>%
   mutate_at(c("default"), as.factor) %>%
   filter(default == 0) %>%
-  select(Oppurtunity) %>% 
-  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>% 
+  select(Oppurtunity) %>%
+  transmute(total_oppurtunity = format(sum(.), big.mark = ",", scientific = F)) %>%
   head(1)
 ```
 
@@ -283,7 +283,7 @@ scenario3 %>%
 ```{r}
 scenario3 %>%
   mutate(default = ifelse(PD >= 0.1, 1, 0)) %>%
-  mutate(loan_approval = ifelse(default == 0, 1, 0)) %>% 
-  select(loan_approval) %>% 
+  mutate(loan_approval = ifelse(default == 0, 1, 0)) %>%
+  select(loan_approval) %>%
   write.csv(file = "data/G2_S3.csv", row.names = F)
 ```

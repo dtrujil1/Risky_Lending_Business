@@ -8,7 +8,7 @@ output: github_document
 ```{r setup, include=F}
 knitr::opts_chunk$set(
   fig.path = "markdown_figs/data_preparation-",
-  eval = F
+  eval = T
 )
 ```
 
@@ -23,7 +23,7 @@ library(data.table) # Faster reading speeds for csv files (fread)
 library(doParallel)
 ```
 
-```{r start-cluster, include=F}
+```{r start-cluster, eval=F, include=F}
 # ONLY RUN ONCE
 
 set.seed(123)
@@ -69,7 +69,7 @@ nzv_cols <- nearZeroVar(train_predictor_df, allowParallel = T, foreach = T)
 train_predictor_df_cln <- train_predictor_df[, -nzv_cols]
 ```
 
-#### `NA`Inputation using Median 
+#### `NA`Inputation using Median
 
 ```{r}
 impute_model <- preProcess(train_predictor_df_cln, method = "medianImpute")
@@ -90,7 +90,7 @@ train_predictor_df_cln3 <- predict(preproc_model, train_predictor_df_cln2)
 ### Spliting `loan_df_cln3` into Training and Test
 
 ```{r}
-train_df <- cbind(train_predictor_df_cln3, target_df) %>% dplyr::select(-c("V1", "id"))
+train_df <- cbind(train_predictor_df_cln3, target_df)
 
 train_index <- createDataPartition(
   train_df$loss,
@@ -133,15 +133,15 @@ max(cv_fit$cvm)
 
 ```{r}
 predictions <- predict(cv_fit, newx = val_data_x, s = "lambda.min") %>% as.vector()
-pred_class <- predict(cv_fit, newx = val_data_x, s = "lambda.min", type = "class") %>% 
+pred_class <- predict(cv_fit, newx = val_data_x, s = "lambda.min", type = "class") %>%
   as.vector() %>%
   factor(levels = c("0", "1"))
 ```
 
-### ROC & AUC 
+### ROC & AUC
 
 ```{r}
-roc_result <- roc(test_data_y, predictions)
+roc_result <- roc(val_data_y, predictions)
 
 roc_result
 ```
@@ -186,7 +186,7 @@ test_nzv_cols <- nearZeroVar(test_predictors_df, allowParallel = T, foreach = T)
 test_predictors_df_cln <- test_predictors_df[, -test_nzv_cols]
 ```
 
-#### `NA`Inputation using Median 
+#### `NA`Inputation using Median
 
 ```{r}
 test_impute_model <- preProcess(test_predictors_df_cln, method = "medianImpute")
@@ -228,7 +228,7 @@ summary(prob_default)
 write.csv(prob_default, file = "data/customer-PD.csv", row.names = F)
 ```
 
-```{r close-clusters, include=F}
+```{r close-clusters, eval=F, include=F}
 # ONLY RUN ONCE
 
 stopCluster(cluster)
